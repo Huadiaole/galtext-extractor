@@ -442,6 +442,36 @@ class GalTextApp:
             pdf_row, text="每场景另起一页", variable=self.scene_per_page_var
         ).grid(row=0, column=3, sticky="w")
 
+        # 说话人相关：很多脚本把名字放在单独一行声明，不跟踪就会丢掉人名
+        speaker_row = ttk.Frame(opts, style="Gal.Bg.TFrame")
+        speaker_row.grid(row=3, column=0, columnspan=8, sticky="ew", pady=(8, 0))
+
+        self.track_speakers_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            speaker_row,
+            text="跟踪说话人声明",
+            variable=self.track_speakers_var,
+        ).grid(row=0, column=0, sticky="w")
+
+        self.guess_speakers_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            speaker_row,
+            text="自动识别单独成行的角色名",
+            variable=self.guess_speakers_var,
+        ).grid(row=0, column=1, sticky="w", padx=(16, 0))
+
+        ttk.Label(speaker_row, text="旁白标记", style="Gal.Muted.TLabel").grid(
+            row=0, column=2, sticky="e", padx=(20, 6)
+        )
+        self.narration_var = tk.StringVar(value="")
+        narration_entry = ttk.Entry(speaker_row, textvariable=self.narration_var, width=10)
+        narration_entry.grid(row=0, column=3, sticky="w")
+        ttk.Label(
+            speaker_row,
+            text="（填「旁白」可让每行都带名字；留空则旁白不署名）",
+            style="Gal.Faint.TLabel",
+        ).grid(row=0, column=4, sticky="w", padx=(8, 0))
+
     # ---- 工作区（脚本列表 + 文本预览）-----------------------------------
     def _build_workspace(self) -> None:
         paned = ttk.PanedWindow(self.master, orient="horizontal")
@@ -731,6 +761,9 @@ class GalTextApp:
             drop_ascii_only=not self.keep_ascii_var.get(),
             aggressive=self.aggressive_var.get(),
             chinese_only=self.chinese_only_var.get(),
+            track_speakers=self.track_speakers_var.get(),
+            guess_bare_speakers=self.guess_speakers_var.get(),
+            narration_speaker=self.narration_var.get().strip(),
         )
         return pipeline.ExtractOptions(
             engines=chosen or None,

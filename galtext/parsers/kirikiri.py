@@ -812,6 +812,7 @@ def _extract_kag_lines(data: bytes) -> List[str]:
     text = _decode_text(data)
     result: List[str] = []
     block: Optional[str] = None  # name of the currently skipped block
+    current_speaker = ""  # 由 [name ...] 之类的标签声明，沿用到后续纯台词行
     for raw_line in _split_kag_lines(text):
         line = raw_line.lstrip(" \t")
         if not line:
@@ -826,6 +827,12 @@ def _extract_kag_lines(data: bytes) -> List[str]:
                 if name.startswith(end_tag):
                     block = None
             continue
+        # 说话人声明要**在丢弃标签之前**读出来，否则整行被当标签扔掉，
+        # 后面那些不带名字的台词就没有说话人了。
+        if line.startswith("["):
+            declaration = _speaker_declaration(line)
+            if declaration:
+                current_speaker = declaration
         if line.startswith("[") or line.startswith("@"):
             marker = line[1:] if line.startswith("[") else line[1:]
             name = re.split(r"[\s\]=]", marker.strip(), maxsplit=1)[0].lower()
@@ -848,8 +855,33 @@ def _extract_kag_lines(data: bytes) -> List[str]:
             continue
         if not _WORD_RE.search(body):
             continue
-        result.append(body)
+        # 台词自己带名字（悠斗「…」）时以它为准，别被跨行的声明覆盖
+        if current_speaker and not _INLINE_SPEAKER_RE.match(body):
+            result.append((current_speaker, body))
+        else:
+            result.append(body)
     return result
+
+
+#: 台词自带名字的写法（悠斗「…」），这种以行内名字为准
+_INLINE_SPEAKER_RE = re.compile(r"^[^「」『』\"“”\s:：,，。]{1,16}\s*[「『\"“]")
+
+
+def _speaker_declaration(line: str) -> str:
+    """读出一行里的「当前说话人」声明，读不到返回空串。
+
+    真正的解析在 :func:`galtext.textkit.extract_speaker_declaration`，
+    这里只是懒加载转发 —— 保留懒加载是为了让本模块仍能作为独立脚本运行
+    （``python -m galtext.parsers.kirikiri`` 的自测不依赖包内其它模块）。
+    """
+    try:
+        from .. import textkit
+    except Exception:  # pragma: no cover - 独立运行时没有包上下文
+        return ""
+    try:
+        return textkit.extract_speaker_declaration(line)
+    except Exception:  # pragma: no cover
+        return ""
 
 
 def _extract_plain_lines(data: bytes) -> List[str]:

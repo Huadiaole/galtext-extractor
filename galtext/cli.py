@@ -117,6 +117,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="只保留中文行（丢掉含假名的日文行）—— 用于原版与汉化补丁并存的游戏",
     )
     scan.add_argument(
+        "--narration-label",
+        default="",
+        help="给旁白补的说话人名字（例如填 旁白），让每行都有名字",
+    )
+    scan.add_argument(
+        "--guess-speakers",
+        action="store_true",
+        help="把单独成行的短行当成角色名（名字与台词分行的脚本；启发式，可能误判）",
+    )
+    scan.add_argument(
+        "--no-speaker-tracking",
+        action="store_true",
+        help="不跨行跟踪 [name text=...] 这类说话人声明",
+    )
+    scan.add_argument(
         "--keep-all-versions",
         action="store_true",
         help="关闭封包覆盖语义：同一脚本在多个封包里各有一份时全部保留（用于对照原文与译文）",
@@ -200,6 +215,9 @@ def _cmd_scan(args: argparse.Namespace) -> int:
         aggressive=args.aggressive,
         strip_tags=not args.no_tags,
         chinese_only=args.chinese_only,
+        track_speakers=not args.no_speaker_tracking,
+        guess_bare_speakers=args.guess_speakers,
+        narration_speaker=args.narration_label,
     )
     engines = [e.strip() for e in args.engines.split(",") if e.strip()] or None
     options = pipeline.ExtractOptions(

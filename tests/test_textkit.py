@@ -185,6 +185,111 @@ class ChineseOnlyTests(unittest.TestCase):
         self.assertEqual(opts.min_len, 2)
 
 
+class SpeakerTrackingTests(unittest.TestCase):
+    """跨行说话人跟踪。
+
+    很多 KAG 脚本不把名字写在同一行，而是先 ``[name text="…"]`` 声明，
+    再跟一行纯台词。只解析台词行的话，这些人名就全丢了。
+    """
+
+    KAG = (
+        "*start\n"
+        '[name text="悠斗"]\n'
+        "早上好，前辈。\n"
+        "今天天气也不错呢。\n"
+        '[name text="前辈"]\n'
+        "早上好。今天来得真早。\n"
+        '[bg file="bg01.png"]\n'
+        "天空湛蓝清澈。\n"
+    )
+
+    def test_declaration_parsing(self) -> None:
+        self.assertEqual(tk.extract_speaker_declaration('[name text="悠斗"]'), "悠斗")
+        self.assertEqual(tk.extract_speaker_declaration("[chara_mod name=悠斗]"), "悠斗")
+        self.assertEqual(tk.extract_speaker_declaration("[name 悠斗]"), "悠斗")
+        self.assertEqual(tk.extract_speaker_declaration("普通台词"), "")
+
+    def test_non_speaker_tags_are_ignored(self) -> None:
+        """bg / image 之类标签里的 name= 不是角色名。"""
+        self.assertEqual(tk.extract_speaker_declaration('[bg file="bg01.png"]'), "")
+        self.assertEqual(tk.extract_speaker_declaration('[image name="bg01"]'), "")
+        self.assertEqual(tk.extract_speaker_declaration('[wait time=500]'), "")
+
+    def test_speaker_carried_forward(self) -> None:
+        rows = [(sp, body) for _ln, sp, body in tk.iter_dialogue_lines(self.KAG)]
+        self.assertIn(("悠斗", "早上好，前辈。"), rows)
+        self.assertIn(("悠斗", "今天天气也不错呢。"), rows)
+        self.assertIn(("前辈", "早上好。今天来得真早。"), rows)
+        # bg 标签不改变说话人，所以这句仍然归「前辈」
+        self.assertIn(("前辈", "天空湛蓝清澈。"), rows)
+
+    def test_tracking_can_be_disabled(self) -> None:
+        opts = tk.CleanOptions(track_speakers=False)
+        speakers = {sp for _ln, sp, _b in tk.iter_dialogue_lines(self.KAG, opts)}
+        self.assertEqual(speakers, {""})
+
+    def test_narration_label(self) -> None:
+        """旁白标记在所有说话人推断之后才套用，所以要走整段路径。"""
+        opts = tk.CleanOptions(narration_speaker="旁白")
+        rows = [(sp, body) for _ln, sp, body in tk.iter_dialogue_lines("天空湛蓝清澈。", opts)]
+        self.assertEqual(rows, [("旁白", "天空湛蓝清澈。")])
+        # 本来就有说话人的行不受影响
+        rows = [
+            (sp, body)
+            for _ln, sp, body in tk.iter_dialogue_lines("悠斗「早上好」", opts)
+        ]
+        self.assertEqual(rows, [("悠斗", "早上好")])
+
+    def test_narration_label_does_not_break_tracking(self) -> None:
+        """套了旁白标记之后，跨行声明与行内名字仍然要正确。"""
+        opts = tk.CleanOptions(narration_speaker="旁白")
+        script = '[name text="悠斗"]\n早上好。\n'
+        rows = [(sp, body) for _ln, sp, body in tk.iter_dialogue_lines(script, opts)]
+        self.assertEqual(rows, [("悠斗", "早上好。")])
+        # 没有任何声明时，才是真正的旁白
+        rows = [(sp, body) for _ln, sp, body in tk.iter_dialogue_lines("天空湛蓝。", opts)]
+        self.assertEqual(rows, [("旁白", "天空湛蓝。")])
+
+    def test_declaration_persists_until_changed(self) -> None:
+        """声明会一直生效到下一个声明 —— 中间不需要每句都重新声明。"""
+        script = (
+            '[name text="悠斗"]\n'
+            "第一句。\n"
+            "第二句。\n"
+            '[name text="前辈"]\n'
+            "第三句。\n"
+        )
+        rows = [(sp, body) for _ln, sp, body in tk.iter_dialogue_lines(script)]
+        self.assertEqual(
+            rows,
+            [("悠斗", "第一句。"), ("悠斗", "第二句。"), ("前辈", "第三句。")],
+        )
+
+    def test_narration_label_off_by_default(self) -> None:
+        self.assertEqual(
+            tk.extract_dialogue("天空湛蓝清澈。"), [("", "天空湛蓝清澈。")]
+        )
+
+    def test_bare_name_heuristic(self) -> None:
+        self.assertTrue(tk.looks_like_bare_name("悠斗"))
+        self.assertFalse(tk.looks_like_bare_name("翌日。"))
+        self.assertFalse(tk.looks_like_bare_name("悠斗「早上好」"))
+        self.assertFalse(tk.looks_like_bare_name("ABC"))
+        self.assertFalse(tk.looks_like_bare_name(""))
+
+    def test_guess_bare_speakers(self) -> None:
+        script = "悠斗\n早上好，前辈。\n前辈\n早上好。\n"
+        opts = tk.CleanOptions(guess_bare_speakers=True)
+        got = [(sp, body) for _ln, sp, body in tk.iter_dialogue_lines(script, opts)]
+        self.assertEqual(got, [("悠斗", "早上好，前辈。"), ("前辈", "早上好。")])
+
+    def test_bare_name_off_by_default(self) -> None:
+        script = "悠斗\n早上好，前辈。\n"
+        got = [(sp, body) for _ln, sp, body in tk.iter_dialogue_lines(script)]
+        # 名字行会被当成一句单独文本，但这不影响台词本身的抽取
+        self.assertIn(("", "早上好，前辈。"), got)
+
+
 class BinaryScanTests(unittest.TestCase):
     def test_sjis_run(self) -> None:
         blob = b"\x00\x01\x02" + "こんにちは元気ですか".encode("cp932") + b"\xff\xfe\x00"

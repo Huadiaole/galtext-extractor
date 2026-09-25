@@ -410,6 +410,18 @@ def scan(
             "想同时提取原版与汉化两版做对照，请关闭「封包覆盖」。"
         )
 
+    # 让「还残留日文」这件事可见：数一数有多少行带假名（中文行基本不含假名）。
+    # 补丁没覆盖到的文件、以及补丁里没翻译的句子，都会落在这里。
+    if not options.clean.chinese_only:
+        kana_lines = sum(1 for line in result.lines if textkit.has_kana(line.text))
+        if kana_lines:
+            ratio = kana_lines / max(1, len(result.lines))
+            result.warnings.append(
+                f"有 {kana_lines} 条文本含假名（占 {ratio:.0%}），"
+                "通常是补丁未覆盖的部分或未翻译的句子。"
+                "想要纯中文输出，请打开「只保留中文行」。"
+            )
+
     elapsed = time.time() - started
     report(1.0, f"完成：{len(result.lines)} 条文本，用时 {elapsed:.1f} 秒")
     log.info(

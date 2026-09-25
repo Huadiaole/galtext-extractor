@@ -300,8 +300,9 @@ def call_extract_lines(
     if not raw:
         return []
 
-    out: list[tuple[str, str]] = []
-    seen: set[str] = set()
+    # 先把所有候选行收集成 (说话人提示, 行) 序列，再交给 textkit 在**整段**上抽取 ——
+    # 跨行说话人跟踪与「名字单独成行」的识别都需要上下文，逐行处理是做不到的。
+    items: list[tuple[str, str]] = []
     for item in raw:
         speaker = ""
         if isinstance(item, str):
@@ -316,9 +317,14 @@ def call_extract_lines(
         if not text:
             continue
         for line in text.splitlines():
-            for sp, body in textkit.extract_dialogue(line, options):
-                if body in seen:
-                    continue
-                seen.add(body)
-                out.append((textkit.normalize_text(speaker) or sp, body))
+            items.append((speaker, line))
+
+    out: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for _index, who, body in textkit.iter_dialogue_over_lines(items, options):
+        key = f"{who}\u0000{body}"
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((textkit.normalize_text(who), body))
     return out

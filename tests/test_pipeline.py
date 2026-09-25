@@ -247,6 +247,64 @@ class PatchOverrideTests(unittest.TestCase):
         )
 
 
+class TaggedSpeakerScanTests(unittest.TestCase):
+    """端到端：KAG 用 ``[name text=…]`` 声明说话人时，扫出来的行必须带人名。"""
+
+    SCRIPT = (
+        "*start\n"
+        '[name text="悠斗"]\n'
+        "早上好，前辈。\n"
+        '[name text="前辈"]\n'
+        "早上好。今天来得真早。\n"
+        "悠斗「这句自带名字」\n"
+    )
+
+    def _kirikiri(self):
+        module = parsers.get("kirikiri")
+        if module is None:
+            self.skipTest("kirikiri 模块不可用")
+        return module
+
+    def test_kirikiri_attaches_declared_speakers(self) -> None:
+        kirikiri = self._kirikiri()
+        rows = kirikiri.extract_lines("scenario/a.ks", self.SCRIPT.encode("utf-8"))
+        self.assertIn(("悠斗", "早上好，前辈。"), rows)
+        self.assertIn(("前辈", "早上好。今天来得真早。"), rows)
+        # 台词自带名字的行保持原样，交给上层拆分，不被声明覆盖
+        self.assertTrue(
+            any(isinstance(r, str) and "「这句自带名字」" in r for r in rows), rows
+        )
+
+    def test_scan_result_has_speakers(self) -> None:
+        self._kirikiri()
+        with tempfile.TemporaryDirectory() as tmp:
+            game = pathlib.Path(tmp) / "Game"
+            (game / "scenario").mkdir(parents=True)
+            (game / "scenario" / "a.ks").write_bytes(self.SCRIPT.encode("utf-8"))
+            result = pipeline.scan(game)
+            pairs = {(line.speaker, line.text) for line in result.lines}
+            self.assertIn(("悠斗", "早上好，前辈。"), pairs)
+            self.assertIn(("前辈", "早上好。今天来得真早。"), pairs)
+            self.assertIn(("悠斗", "这句自带名字"), pairs)
+
+    def test_narration_label_end_to_end(self) -> None:
+        self._kirikiri()
+        with tempfile.TemporaryDirectory() as tmp:
+            game = pathlib.Path(tmp) / "Game"
+            (game / "scenario").mkdir(parents=True)
+            (game / "scenario" / "a.ks").write_bytes(
+                "*start\n天空湛蓝清澈。\n".encode("utf-8")
+            )
+            result = pipeline.scan(
+                game,
+                pipeline.ExtractOptions(
+                    clean=textkit.CleanOptions(narration_speaker="旁白")
+                ),
+            )
+            pairs = {(line.speaker, line.text) for line in result.lines}
+            self.assertIn(("旁白", "天空湛蓝清澈。"), pairs)
+
+
 class RegistryTests(unittest.TestCase):
     def test_registry_loads_without_crashing(self) -> None:
         infos = parsers.list_engines()

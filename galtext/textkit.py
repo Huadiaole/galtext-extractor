@@ -477,6 +477,26 @@ class CleanOptions:
     日式称呼）也会被一起丢掉。需要保底时把它关掉即可。
     """
 
+    track_speakers: bool = True
+    """跨行跟踪说话人：记住 ``[name text="…"]`` 之类的声明，沿用到后续台词。
+
+    很多 KAG 脚本不把名字写在同一行，而是先声明再跟一行纯台词。
+    关掉它就只认「名字和台词在同一行」的写法。
+    """
+
+    guess_bare_speakers: bool = False
+    """把「单独成行、短、无标点」的行当成角色名（名字与台词分行的脚本）。
+
+    默认关闭：``翌日`` 这类短旁白和名字长得一模一样，开之前请先确认效果。
+    """
+
+    narration_speaker: str = ""
+    """给旁白补的说话人标记（例如填 ``旁白``），让每行都有名字。
+
+    留空则旁白不署名。标记在**所有说话人推断结束之后**才套用，
+    所以不会影响「名字单独成行」的判断，也不会盖掉解析器给出的说话人。
+    """
+
     def clone(self, **kwargs) -> "CleanOptions":
         data = dataclasses.asdict(self)
         data.update(kwargs)
@@ -651,6 +671,10 @@ def extract_dialogue(raw_line: str, opts: CleanOptions | None = None) -> list[tu
         if not _is_dialogue_shape(text, opts):
             return
         seen.add(text)
+        # 注意：这里**不**套用 narration_speaker。旁白标记是所有说话人推断
+        # 都做完之后的最后一步（见 iter_dialogue_over_lines）——
+        # 如果在这里就套上，它会被后续逻辑当成「真说话人」，
+        # 既会让「名字单独成行」的前瞻失效，也会盖掉模块给出的说话人。
         results.append((normalize_text(speaker), text))
 
     # 1) 整行就是 Name「台词」或「台词」
@@ -696,14 +720,138 @@ def extract_dialogue(raw_line: str, opts: CleanOptions | None = None) -> list[tu
 # --------------------------------------------------------------------------
 # 逐行驱动
 # --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# 跨行说话人跟踪
+# --------------------------------------------------------------------------
+#: KAG 这类引擎里，名字常常**不写在台词行**，而是先声明再跟一行纯台词：
+#:
+#:     [name text="悠斗"]
+#:     おはよう、先輩。
+#:
+#: 只解析台词行的话，这些行的说话人就丢了 —— 所以需要记住「当前是谁在说」。
+_SPEAKER_TAG_RE = re.compile(r"\[(?P<tag>[A-Za-z_][A-Za-z0-9_]*)(?P<args>[^\]\n]*)\]")
+_SPEAKER_ATTR_RE = re.compile(
+    r"(?:text|name|value)\s*=\s*(?:\"(?P<d>[^\"]{1,24})\"|'(?P<s>[^']{1,24})'|(?P<b>[^\s\]]{1,24}))"
+)
+#: 这些标签的 ``name=`` / ``text=`` 属性视为「当前说话人」
+_SPEAKER_TAGS = frozenset(
+    {
+        "name",
+        "speaker",
+        "chara",
+        "chr",
+        "char",
+        "actor",
+        "person",
+        "chara_show",
+        "chara_mod",
+        "chara_new",
+        "chara_face",
+        "chara_ptext",
+    }
+)
+#: 单独成行的名字不该包含这些字符
+_BARE_NAME_BAD = set("。！？…、，．,.!?；;：:「」『』（）()[]{}<>\"'“”‘’·~～—–-")
+
+
+def extract_speaker_declaration(line: str) -> str:
+    """从一行脚本里找出「当前说话人」声明，找不到返回空串。
+
+    支持 ``[name text="悠斗"]``、``[chara_mod name=悠斗]``、``[name 悠斗]`` 等写法。
+    只在 :data:`_SPEAKER_TAGS` 里的标签会被认，避免把 ``[bg name="bg01"]``
+    这种东西当成角色名。
+    """
+    if not line or "[" not in line:
+        return ""
+    for match in _SPEAKER_TAG_RE.finditer(line):
+        tag = match.group("tag").lower()
+        if tag not in _SPEAKER_TAGS:
+            continue
+        args = match.group("args")
+        attr = _SPEAKER_ATTR_RE.search(args)
+        if attr:
+            value = (attr.group("d") or attr.group("s") or attr.group("b") or "").strip()
+            if value and len(value) <= 24:
+                return value
+        # [name 悠斗] 这种位置参数写法
+        positional = args.strip().strip("\"'")
+        if positional and "=" not in positional and 0 < len(positional) <= 12:
+            return positional
+    return ""
+
+
+def looks_like_bare_name(line: str) -> bool:
+    """判断一行是不是「单独成行的角色名」。
+
+    只在 :attr:`CleanOptions.guess_bare_speakers` 打开时使用 ——
+    ``翌日`` 这类短旁白和名字长得一模一样，所以这条启发式默认关闭。
+    """
+    s = line.strip()
+    if not (1 <= len(s) <= 8):
+        return False
+    if any(ch in _BARE_NAME_BAD for ch in s):
+        return False
+    if any(ch.isascii() for ch in s):
+        return False
+    return has_japanese(s)
+
+
+def iter_dialogue_over_lines(
+    items: Iterable[tuple[str, str]], opts: CleanOptions | None = None
+) -> Iterator[tuple[int, str, str]]:
+    """在**整段行序列**上抽取，产出 ``(行下标, 说话人, 台词)``（下标从 0 起）。
+
+    ``items`` 是 ``(说话人提示, 原始行)`` —— 提示来自解析器模块（有些模块已经
+    知道说话人了），为空则由这里推断。
+
+    之所以要「整段」而不是逐行，是因为两种说话人写法都需要上下文：
+
+    * ``[name text="悠斗"]`` 声明在**前一行**，要沿用到后面的台词；
+    * 名字**单独成行**时，得看下一行是不是台词才能确认它是名字。
+    """
+    opts = opts or CleanOptions()
+    rows = [((hint or ""), line) for hint, line in items]
+    current = ""
+    for index, (hint, raw) in enumerate(rows):
+        if opts.track_speakers:
+            declaration = extract_speaker_declaration(raw)
+            if declaration:
+                current = declaration
+
+        if opts.guess_bare_speakers and looks_like_bare_name(raw):
+            name = raw.strip()
+            # 只有当**下一行是没有自己名字的台词**时，这一行才是「单独成行的名字」。
+            # 若下一行自带说话人（``悠斗「…」``），那这一行更可能是旁白。
+            for next_hint, following in rows[index + 1 :]:
+                if not following.strip():
+                    continue
+                following_rows = extract_dialogue(following, opts)
+                if next_hint.strip() or (
+                    following_rows and not any(sp for sp, _body in following_rows)
+                ):
+                    current = name
+                break
+            if current == name:
+                continue
+
+        for speaker, body in extract_dialogue(raw, opts):
+            # 优先级：解析器模块已经确定的说话人 > 台词行内自带的 > 跨行跟踪到的
+            if not speaker:
+                speaker = hint.strip() or (current if opts.track_speakers else "")
+            # 最后一步才给旁白补标记：此时说话人推断已经全部结束，
+            # 不会再影响「名字单独成行」的判断或模块给的名字。
+            if not speaker and opts.narration_speaker:
+                speaker = normalize_text(opts.narration_speaker)
+            yield index, speaker, body
+
+
 def iter_dialogue_lines(
     text: str, opts: CleanOptions | None = None, source: str = ""
 ) -> Iterator[tuple[int, str, str]]:
-    """按行扫描一段脚本，产出 ``(行号, 说话人, 台词)``。"""
-    opts = opts or CleanOptions()
-    for lineno, raw in enumerate(text.splitlines(), 1):
-        for speaker, body in extract_dialogue(raw, opts):
-            yield lineno, speaker, body
+    """按行扫描一段脚本，产出 ``(行号, 说话人, 台词)``（行号从 1 起）。"""
+    items = (("", line) for line in text.splitlines())
+    for index, speaker, body in iter_dialogue_over_lines(items, opts):
+        yield index + 1, speaker, body
 
 
 # --------------------------------------------------------------------------
