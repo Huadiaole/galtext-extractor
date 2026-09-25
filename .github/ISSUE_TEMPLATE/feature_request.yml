@@ -1,0 +1,60 @@
+name: 功能建议
+description: 提出新功能、新引擎支持或改进想法
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        谢谢你的建议！请尽量说明「想解决什么问题」，
+        而不只是「想加什么按钮」——这样更容易找到合适的实现方式。
+
+  - type: textarea
+    id: feature
+    attributes:
+      label: 你想要的功能
+      description: 一句话说明希望增加或改变什么。
+      placeholder: 例如：希望支持某个引擎的封包格式；希望导出能保留每行文本的脚本位置。
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景
+      description: 你在什么情况下会用到它？现在是怎么绕过去的？
+      placeholder: |
+        例如：我一次要处理十几个同引擎的游戏，现在只能一个个手点界面导出，
+        希望能用命令行批量跑。
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你设想的实现方式
+      description: 有想法就写，没有可以留空（比如涉及的封包结构、命令行参数名、界面交互）。
+      placeholder: 例如：给 `scan` 加一个 `--root-list` 参数，读一个目录清单文件。
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案
+      description: 你考虑过的其它做法，或者现有功能里能凑合实现的方式。
+      placeholder: 例如：用正则从导出的 TXT 里自己拼位置信息，但换行规则对不上。
+    validations:
+      required: false
+
+  - type: dropdown
+    id: pr-willingness
+    attributes:
+      label: 是否愿意提交 PR
+      description: 这个项目完全靠业余时间维护，有人帮忙实现会快很多。
+      options:
+        - 愿意，我可以自己提交 PR
+        - 愿意，但需要一些指点
+        - 暂时没时间，只是提个想法
+    validations:
+      required: true

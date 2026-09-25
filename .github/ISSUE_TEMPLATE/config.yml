@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 提问与交流（Discussions）
+    url: https://github.com/Huadiaole/galtext-extractor/discussions
+    about: 使用问题、经验分享、引擎适配讨论请来这里。注意：游戏资源 / 汉化补丁的请求不受理，本仓库不提供任何游戏本体与补丁。

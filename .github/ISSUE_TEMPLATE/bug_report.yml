@@ -1,0 +1,124 @@
+name: 缺陷报告
+description: 报告一个可以复现的程序问题（崩溃、解析错误、导出异常等）
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间反馈问题！
+
+        请尽量把信息填完整。能附上**最小可复现**的目录结构或脱敏后的样本片段时，
+        排查速度会快很多。请注意：不要上传受版权保护的游戏本体文件。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述
+      description: 你遇到了什么问题？请用一两句话概括。
+      placeholder: 例如：扫描某个 NScripter 游戏时界面卡在 0%，最后只导出了 3 行文本。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 按顺序写清楚每一步，尽量具体到点了哪个按钮、用了哪条命令。
+      placeholder: |
+        1. 打开 `python -m galtext gui`
+        2. 选择游戏目录 `D:\Games\XXX`
+        3. 点击「开始扫描」
+        4. 选择导出格式 TXT 并导出
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+      description: 你原本以为会发生什么？
+      placeholder: 例如：应该能把全部脚本列出来，导出的 TXT 里有几千行台词。
+    validations:
+      required: false
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      description: 实际发生了什么？如果和期望结果相同可以略过。
+      placeholder: 例如：脚本列表是空的，状态栏显示「未识别到引擎」。
+    validations:
+      required: false
+
+  - type: input
+    id: game-engine
+    attributes:
+      label: 游戏与引擎
+      description: 引擎名 / 是否用了汉化补丁 / 游戏目录大致结构
+      placeholder: KiriKiri Z + 汉化补丁；目录里有 data.xp3、patch.xp3、scenario/ 散装 .ks
+    validations:
+      required: false
+
+  - type: dropdown
+    id: export-format
+    attributes:
+      label: 导出的格式
+      description: 出问题的是哪种导出（如果是界面/解析阶段的问题，选最接近的一项）。
+      options:
+        - TXT
+        - CSV
+        - JSON
+        - 翻译模板
+        - 剧本 PDF
+        - 界面预览
+        - 其它
+    validations:
+      required: false
+
+  - type: dropdown
+    id: run-mode
+    attributes:
+      label: 运行方式
+      description: 你是怎么启动这个工具的？
+      options:
+        - 图形界面
+        - 命令行
+        - 打包的 exe
+    validations:
+      required: false
+
+  - type: input
+    id: environment
+    attributes:
+      label: 环境信息
+      description: 请填 Python 版本与 Windows 版本
+      placeholder: 例如：Python 3.14.2 / Windows 11 24H2；可用 `python -m galtext --version` 查看版本号
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 错误日志或截图
+      description: 请粘贴完整输出（命令行模式下建议带上 `-v` 重新跑一次）
+      placeholder: |
+        可粘贴以 `>>> ` 开头的完整输出（异常回溯），或直接把截图拖进编辑框。
+        >>> Traceback (most recent call last):
+        >>>   ...
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 确认事项
+      description: 提交前请逐条确认。
+      options:
+        - label: 已经试过最新版本（而不是几个月前的旧版本或旧 exe）
+          required: true
+        - label: 已经搜索过现有 issue，确认没有人提过同样的问题
+          required: true
+        - label: 这不是求资源或求汉化（本仓库不提供任何游戏本体与汉化补丁）
+          required: true
