@@ -12,16 +12,28 @@ license = { text = "MIT" }
 authors = [{ name = "全部化掉了" }]
 maintainers = [{ name = "全部化掉了" }]
 keywords = [
+    # 定位
     "galgame",
     "visual-novel",
     "text-extraction",
+    # 引擎 / 封包格式 —— 这类工具主要靠「我玩的引擎有没有人做过」被搜到
     "kirikiri",
     "xp3",
     "nscripter",
+    "onscripter",
     "bgi",
+    "ethornell",
+    # 用途
     "shift-jis",
     "translation",
+    "localization",
+    "fan-translation",
+    # 技术栈
+    "python",
     "tkinter",
+    "pdf-generation",
+    "cli",
+    "zero-dependencies",
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
