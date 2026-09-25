@@ -25,6 +25,8 @@ echo [3/4] Building GUI executable (windowed) ...
 rem --collect-submodules pulls in the dynamically imported parsers;
 rem --collect-data is ALSO required, otherwise galtext/assets/** (the app icon
 rem and toolbar icons) is left out and the packaged exe ships without artwork.
+rem NOTE: --icon MUST be an absolute path.  With --specpath set, PyInstaller
+rem resolves relative paths against the spec directory, not the project root.
 ".venv-build\Scripts\python.exe" -m PyInstaller ^
     --noconfirm --clean --onefile --windowed ^
     --name GalTextExtractor ^
@@ -33,7 +35,7 @@ rem and toolbar icons) is left out and the packaged exe ships without artwork.
     --specpath build ^
     --collect-submodules galtext ^
     --collect-data galtext ^
-    --icon "galtext\assets\app.ico" ^
+    --icon "%CD%\galtext\assets\app.ico" ^
     --hidden-import tkinter ^
     --hidden-import tkinter.ttk ^
     --hidden-import tkinter.filedialog ^
